@@ -7,6 +7,15 @@ using namespace std;
 std::mt19937 rng(std::random_device{}());
 std::normal_distribution<double> normal(0.0, 1.0);
 
+double put_payoff(double S, double K)
+{
+    return std::max(K - S, 0.0);
+}
+
+double call_payoff(double S, double K)
+{
+    return std::max(S - K, 0.0);
+}
 double normal_random() 
 {
 	return normal(rng);
@@ -35,6 +44,8 @@ int main()
 	double T = 1.0;
 	int steps = 1000;
 
+    double K = 100.0;
+
 	double dt = T / steps;
 	simulate_path(S, mu, sigma, T, steps);
 	std::cout << "Final price: " << S << std::endl;
@@ -44,13 +55,20 @@ int main()
 
 		//int simulations = 1000;
 		double sum = 0.0;
+
 		for (int i = 0; i < simulations; ++i)
 		{
-			sum += simulate_path(S, mu, sigma, T, steps);
+		    double ST = simulate_path(S, mu, sigma, T, steps);
+			//sum += simulate_path(S, mu, sigma, T, steps);
+			sum+= call_payoff(ST, K);
 		}
-		double average = sum / simulations;
 
-		std::cout << "Average price at " << simulations << " simulations : " << average << std::endl;
+		//double average = sum / simulations;
+		double price = sum / simulations;
+		price*= std::exp(-0.05 * 1.0);
+
+		//std::cout << "Average price at " << simulations << " simulations : " << average << std::endl;
+		std::cout << "Call price (MC): " << price << std::endl; 
 	}
 
 	return 0;
