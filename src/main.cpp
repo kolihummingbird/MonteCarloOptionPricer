@@ -36,7 +36,13 @@ double black_scholes_call(double S, double K, double r, double sigma, double T)
 
     return S * normal_cdf(d1) - K * std::exp(-r * T) * normal_cdf(d2);
 }
+double black_scholes_delta(double S, double K, double r,
+	double sigma, double T)
+{
+	double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * std::sqrt(T));
 
+	return normal_cdf(d1);
+}
 
 double monte_carlo_call_antithetic(int num_paths, double S,
 	double K, double r, double sigma, double T)
@@ -114,6 +120,7 @@ double monte_carlo_call_stats(int num_paths, double S,
 	return std::exp(-r * T) * mean;
 }
 
+
 double monte_carlo_delta(int paths, double S, double K, double r, double sigma, double T) 
 {
 	double eps = 0.01 * S;
@@ -125,6 +132,27 @@ double monte_carlo_delta(int paths, double S, double K, double r, double sigma, 
 	
 }
 
+double monte_carlo_delta_crn(int paths, double S, 
+	double K, double r, double sigma, double T) //common random numbers
+{
+	double eps = 0.01 * S;
+	double sum_up = 0.0;
+	double sum_down = 0.0;
+
+	for (int i = 0; i < paths; ++i)
+	{
+		double Z = normal_random();
+		double ST_up = (S + eps) * std::exp((r-0.5*sigma*sigma)*T +sigma * std::sqrt(T) * Z);
+		double ST_down = (S - eps) * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
+		
+		sum_up += std::max(ST_up - K, 0.0);
+		sum_down += std::max(ST_down - K, 0.0);
+	}
+	double price_up = std::exp(-r * T) * (sum_up / paths);
+	double price_down = std::exp(-r * T) * (sum_down / paths);
+
+	return (price_up - price_down) / (2.0 * eps);
+}
 
 int main()
 {
@@ -134,11 +162,12 @@ int main()
 	double r = 0.05;
 	double sigma = 0.2;
 	double T = 1.0;
-	int steps = 10000;
+	//int steps = 10000; //for discrete
+	int paths = 10000;	// for continuous
 
 
 	double se;
-	double price = monte_carlo_call_stats(steps, S, K, r, sigma, T, se);
+	double price = monte_carlo_call_stats(paths, S, K, r, sigma, T, se);
 
 	double discounted_se = std::exp(-r * T) * se;
 	std::cout << "Price: " << price << std::endl;
@@ -146,6 +175,14 @@ int main()
 		<< price - 1.96 * discounted_se << ", "
 		<< price + 1.96 * discounted_se << "]"
 		<< std::endl;
+
+	double delta_mc = monte_carlo_delta(paths, S, K, r, sigma, T);
+	double delta_bs = black_scholes_delta(S, K, r, sigma, T);
+	double delta_mc_crn = monte_carlo_delta_crn(paths, S, K, r, sigma, T);
+
+	std::cout << "Delta MC (naive): " << delta_mc << std::endl;
+	std::cout << "Delta MC (CRN): " << delta_mc_crn << std::endl;
+	std::cout << "Delta BS: " << delta_bs << std::endl;
 
 	//std::cout << "Monte Carlo: " << mc << std::endl;
 	//std::cout << "Black-Scholes: " << bs << std::endl;
