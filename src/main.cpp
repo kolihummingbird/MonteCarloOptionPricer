@@ -107,7 +107,7 @@ double monte_carlo_call_stats(int num_paths, double S,
 		double ST = S * std::exp((r - 0.5 * sigma * sigma) * T
 			+ sigma * std::sqrt(T) * Z);
 
-		double payoff = std::max(ST - K, 0.0);
+		double payoff = std::exp(-r * T) * std::max(ST - K, 0.0);
 
 		sum += payoff;
 		sum_sq += payoff * payoff;
@@ -116,7 +116,7 @@ double monte_carlo_call_stats(int num_paths, double S,
 
 	double variance = (sum_sq / num_paths) - (mean * mean);
 	std_error = std::sqrt(variance / num_paths);
-
+	
 	return std::exp(-r * T) * mean;
 }
 
@@ -186,37 +186,56 @@ double monte_carlo_delta_crn_stats(int paths, double S,
     return std::exp(-r * T) * mean;
 }
 
-/*
-double monte_carlo_delta_crn_stats(int paths, double S,
-	double K, double r, double sigma, double T, double& std_error)
+double monte_carlo_delta_pathwise(int paths,
+	double S, double K, double r, double sigma, double T)
 {
-	double eps = 0.01 * S;
-	double mean = 0.0;
-	double M2 = 0.0;
+	double sum = 0.0;
 
 	for (int i = 0; i < paths; ++i)
 	{
 		double Z = normal_random();
 
-		double ST_up = (S + eps) * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
-		double ST_down = (S - eps) * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
+		double ST = S * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
 
-		double delta_i = (std::max(ST_up - K, 0.0)
-			- std::max(ST_down - K, 0.0)) / (2.0 * eps);
+		if (ST > K)
+		{
+			sum += ST / S;
+		}
+	}
 
-		double delta = delta_i;
+	return std::exp(-r * T) * (sum / paths);
+}
 
-		double delta_prev_mean = mean;
+double monte_carlo_delta_pathways_stats(int paths, double S, double K,
+	double r, double sigma, double T, double& std_error)
+{
+	double sum = 0.0;
+	double sum_sq = 0.0;
 
-		mean += (delta - mean) / (i + 1);
-		M2 += (delta - delta_prev_mean) * (delta - mean);
+	for (int i = 0; i < paths; ++i)
+	{
+		double Z = normal_random();
+
+		double ST = S * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
+
+		double delta_i = 0.0;
+
+		if (ST > K)
+		{
+			delta_i = ST / S;
+		}
+		double discounted_delta = std::exp(-r * T) * delta_i;
+		sum += discounted_delta;
+		sum_sq += discounted_delta * discounted_delta;
 	}
 	
-	double variance = M2 / (paths - 1);
+	double mean = sum / paths;
+
+	double variance = (sum_sq / paths) - (mean * mean);
 	std_error = std::sqrt(variance / paths);
 
-	return std::exp(-r * T) * mean;
-} */
+	return mean;
+}
 
 
 int main()
@@ -246,19 +265,26 @@ int main()
 	//double delta_mc = monte_carlo_delta(paths, S, K, r, sigma, T);
 	
 	double delta_bs = black_scholes_delta(S, K, r, sigma, T);
+	std::cout << "Delta BS: " << delta_bs << std::endl;
 	
+	double delta_pw_se;
 	double delta_mc_crn = monte_carlo_delta_crn(paths, S, K, r, sigma, T);
-
 	double delta_mc = monte_carlo_delta_crn_stats(paths, S, K, r, sigma, T, delta_se);
-    
+	double delta_pw = monte_carlo_delta_pathways_stats(paths, S, K, r, sigma, T, delta_pw_se);
+
+	std::cout << "Method        Delta      StdErr" << std::endl;
+	std::cout << "CRN       " << delta_mc << "   " << delta_se << std::endl;
+	std::cout << "Pathwise  " << delta_pw << "   " << delta_pw_se << std::endl;
+
 	std::cout << "Delta MC (naive): " << delta_mc << std::endl;
 	std::cout << "Delta MC (CRN): " << delta_mc_crn << std::endl;
-	std::cout << "Delta BS: " << delta_bs << std::endl;
+	std::cout << "Delta Pathwise: " << delta_pw << std::endl;
+		
+	std::cout << "Delta 95% CI: ["
+		<< delta_mc - 1.96 * delta_se << ", "
+		<< delta_mc + 1.96 * delta_se << "]"
+		<< std::endl;	
 
-    std::cout<< "Delta 95% CI: ["
-             << delta_mc - 1.96 * discounted_se << ", "
-             << delta_mc + 1.96 * discounted_se << "]"
-             << std::endl;
 	//std::cout << "Monte Carlo: " << mc << std::endl;
 	//std::cout << "Black-Scholes: " << bs << std::endl;
 	//std::cout << "Abs error: " << std::abs(mc - bs) << endl;
