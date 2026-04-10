@@ -5,9 +5,30 @@
 
 using namespace std;
 
+double simulate_terminal(double S, double r, double sigma, double T, double Z)
+{
+	return S * std::exp((r - 0.5 * sigma * sigma) * T
+		+ sigma * std::sqrt(T) * Z);
+}
+
+
+// Random Number Generator
+//
 std::mt19937 rng(std::random_device{}());
 std::normal_distribution<double> normal(0.0, 1.0);
 
+double normal_random()
+{
+	return normal(rng);
+}
+
+double normal_cdf(double x)
+{
+	return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
+}
+
+// Payoffs
+//
 double put_payoff(double S, double K)
 {
     return std::max(K - S, 0.0);
@@ -17,16 +38,9 @@ double call_payoff(double S, double K)
 {
     return std::max(S - K, 0.0);
 }
-double normal_random() 
-{
-	return normal(rng);
-}
 
-double normal_cdf(double x)
-{
-    return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0)));
-}
-
+// Black-Scholes
+//
 double black_scholes_call(double S, double K, double r, double sigma, double T)
 {
     double d1 = (std::log(S / K) + (r + 0.5 * sigma * sigma) * T)
@@ -44,6 +58,51 @@ double black_scholes_delta(double S, double K, double r,
 	return normal_cdf(d1);
 }
 
+// Monte Carlo pricing
+//
+
+double monte_carlo_call(int num_paths, double S, double K, double r, double sigma, double T)
+{
+	double payoff_sum = 0.0;
+	for (int i = 0; i < num_paths; ++i)
+	{
+		double Z = normal_random();
+
+		double ST = simulate_terminal(S, r, sigma, T, Z);
+
+		double payoff = std::max(ST - K, 0.0);
+		payoff_sum += payoff;
+	}
+	return std::exp(-r * T) * (payoff_sum / num_paths);
+}
+
+double monte_carlo_call_stats(int num_paths, double S,
+	double K, double r, double sigma,
+	double T, double& std_error)
+{
+	double sum = 0.0;
+	double sum_sq = 0.0;
+
+	for (int i = 0; i < num_paths; ++i)
+	{
+		double Z = normal_random();
+
+		double ST = simulate_terminal(S, r, sigma, T, Z);
+
+		double payoff = std::exp(-r * T) * std::max(ST - K, 0.0);
+
+		sum += payoff;
+		sum_sq += payoff * payoff;
+	}
+	double mean = sum / num_paths;
+
+	double variance = (sum_sq / num_paths) - (mean * mean);
+	std_error = std::sqrt(variance / num_paths);
+
+	return std::exp(-r * T) * mean;
+}
+
+
 double monte_carlo_call_antithetic(int num_paths, double S,
 	double K, double r, double sigma, double T)
 {
@@ -52,8 +111,8 @@ double monte_carlo_call_antithetic(int num_paths, double S,
 	{
 		double Z = normal_random();
 		
-		double ST1 = S * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
-		double ST2 = S * std::exp((r - 0.5 * sigma * sigma) * T - sigma * std::sqrt(T) * Z);
+		double ST1 = simulate_terminal(S, r, sigma, T, Z);
+		double ST2 = simulate_terminal(S, r, sigma, T, -Z);
 		
 		double payoff1 = std::max(ST1-K,0.0);
 		double payoff2 = std::max(ST2 - K, 0.0);
@@ -65,62 +124,9 @@ double monte_carlo_call_antithetic(int num_paths, double S,
 }
 
 
-double simulate_path(double S0, double mu, double sigma, double T, int steps)
-{
-	double S = S0;
-	double dt = T / steps;
-	for (int i=0; i < steps; ++i)
-	{
-		//if (i % 200 == 0) { std::cout << "Intermediate values: " << S << std::endl; }
-		double Z = normal_random();
-		S *= std::exp((mu - 0.5 * sigma * sigma) * dt
-			+ sigma * std::sqrt(dt) * Z);
-	}
-	return S;
-}
 
-double monte_carlo_call(int num_paths, double S, double K, double r, double sigma, double T)
-{
-	double payoff_sum = 0.0;
-	for (int i = 0; i < num_paths; ++i)
-	{
-		double Z = normal_random();
-		double ST = S * std::exp((r - 0.5 * sigma * sigma) * T
-			+ sigma * std::sqrt(T) * Z);
-		double payoff = std::max(ST - K, 0.0);
-		payoff_sum += payoff;
-	}
-	return std::exp(-r * T) * (payoff_sum / num_paths);
-}
-
-double monte_carlo_call_stats(int num_paths, double S, 
-	double K, double r, double sigma, 
-	double T, double& std_error)
-{
-	double sum = 0.0;
-	double sum_sq = 0.0;
-
-	for (int i = 0; i < num_paths; ++i)
-	{
-		double Z = normal_random();
-
-		double ST = S * std::exp((r - 0.5 * sigma * sigma) * T
-			+ sigma * std::sqrt(T) * Z);
-
-		double payoff = std::exp(-r * T) * std::max(ST - K, 0.0);
-
-		sum += payoff;
-		sum_sq += payoff * payoff;
-	}
-	double mean = sum / num_paths;
-
-	double variance = (sum_sq / num_paths) - (mean * mean);
-	std_error = std::sqrt(variance / num_paths);
-	
-	return std::exp(-r * T) * mean;
-}
-
-
+// Greeks
+//
 double monte_carlo_delta(int paths, double S, double K, double r, double sigma, double T) 
 {
 	double eps = 0.01 * S;
@@ -251,11 +257,12 @@ double monte_carlo_delta_pathwise_antithetic(int paths,
 		double ST2 = S * std::exp((r - 0.5 * sigma * sigma) * T - sigma * std::sqrt(T) * Z);
 
 		double delta1 = (ST1 > K) ? (ST1/S) : 0.0;
-		double delta2 = (ST2 > K) ? (ST2 / S) : 0.0;;
+		double delta2 = (ST2 > K) ? (ST2 / S) : 0.0;
 		sum += (delta1 + delta2);		
 	}
+	double discount = std::exp(-r * T);
 
-	return std::exp(-r * T) * (sum / paths);
+	return discount * (sum / paths);
 }
 
 double monte_carlo_delta_pathwise_antithetic_stats(int paths,
@@ -292,6 +299,19 @@ double monte_carlo_delta_pathwise_antithetic_stats(int paths,
 }
 
 
+double simulate_path(double S0, double mu, double sigma, double T, int steps)
+{
+	double S = S0;
+	double dt = T / steps;
+	for (int i = 0; i < steps; ++i)
+	{
+		//if (i % 200 == 0) { std::cout << "Intermediate values: " << S << std::endl; }
+		double Z = normal_random();
+		S *= std::exp((mu - 0.5 * sigma * sigma) * dt
+			+ sigma * std::sqrt(dt) * Z);
+	}
+	return S;
+}
 
 
 
