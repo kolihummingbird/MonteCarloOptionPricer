@@ -237,6 +237,63 @@ double monte_carlo_delta_pathways_stats(int paths, double S, double K,
 	return mean;
 }
 
+double monte_carlo_delta_pathwise_antithetic(int paths,
+	double S, double K, double r, double sigma, double T)
+{
+	double sum = 0.0;
+
+	for (int i = 0; i < paths / 2; ++i)
+	{
+		double Z = normal_random();
+
+		double ST1 = S * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
+
+		double ST2 = S * std::exp((r - 0.5 * sigma * sigma) * T - sigma * std::sqrt(T) * Z);
+
+		double delta1 = (ST1 > K) ? (ST1/S) : 0.0;
+		double delta2 = (ST2 > K) ? (ST2 / S) : 0.0;;
+		sum += (delta1 + delta2);		
+	}
+
+	return std::exp(-r * T) * (sum / paths);
+}
+
+double monte_carlo_delta_pathwise_antithetic_stats(int paths,
+	double S, double K, double r, double sigma, double T, double& std_error)
+{
+	double sum = 0.0;
+	double sum_sq = 0.0;
+
+	for (int i = 0; i < paths / 2; ++i)
+	{
+		double Z = normal_random();
+
+		double ST1 = S * std::exp((r - 0.5 * sigma * sigma) * T + sigma * std::sqrt(T) * Z);
+
+		double ST2 = S * std::exp((r - 0.5 * sigma * sigma) * T - sigma * std::sqrt(T) * Z);
+
+		double delta1 = (ST1 > K) ? (ST1 / S) : 0.0;
+		double delta2 = (ST2 > K) ? (ST2 / S) : 0.0;;
+	
+		double delta_pair = 0.5 * (delta1 + delta2);
+		double discounted = std::exp(-r * T) * delta_pair;
+
+		sum += discounted;
+		sum_sq += discounted * discounted;
+	}
+	int n = paths / 2;
+
+	double mean = sum / n;
+	double variance = (sum_sq / n) - (mean * mean);
+	
+	std_error = std::sqrt(variance / n);
+	
+	return mean;
+}
+
+
+
+
 
 int main()
 {
@@ -268,18 +325,24 @@ int main()
 	std::cout << "Delta BS: " << delta_bs << std::endl;
 	
 	double delta_pw_se;
+	double delta_pwant_se;
+
 	double delta_mc_crn = monte_carlo_delta_crn(paths, S, K, r, sigma, T);
 	double delta_mc = monte_carlo_delta_crn_stats(paths, S, K, r, sigma, T, delta_se);
 	double delta_pw = monte_carlo_delta_pathways_stats(paths, S, K, r, sigma, T, delta_pw_se);
+	double delta_pwant = monte_carlo_delta_pathwise_antithetic_stats(paths, S, K, r, sigma, T, delta_pwant_se);
 
 	std::cout << "Method        Delta      StdErr" << std::endl;
 	std::cout << "CRN       " << delta_mc << "   " << delta_se << std::endl;
 	std::cout << "Pathwise  " << delta_pw << "   " << delta_pw_se << std::endl;
+	std::cout << "Pw Antithetic  " << delta_pwant << "   " << delta_pwant_se << std::endl;
 
+
+	/*
 	std::cout << "Delta MC (naive): " << delta_mc << std::endl;
 	std::cout << "Delta MC (CRN): " << delta_mc_crn << std::endl;
 	std::cout << "Delta Pathwise: " << delta_pw << std::endl;
-		
+	*/
 	std::cout << "Delta 95% CI: ["
 		<< delta_mc - 1.96 * delta_se << ", "
 		<< delta_mc + 1.96 * delta_se << "]"
