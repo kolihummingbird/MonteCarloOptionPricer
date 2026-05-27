@@ -38,3 +38,9 @@ The repository is still under active development and additional features, optimi
 ### 5.3 Probability theory
 ### 5.4 Financial modeling
 ### 5.5 Validation against analytical solution
+
+## 6. Build
+
+```bash
+g++ main.cpp -std=c++20
+./a.out
